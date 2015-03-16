@@ -9,8 +9,11 @@ import (
 	"sync"
 )
 
+type FillFunc func(key interface{}) interface{}
+
 // Cache is a thread-safe fixed size LRU cache.
 type Cache struct {
+	fillFunc  FillFunc
 	size      int
 	evictList *list.List
 	items     map[interface{}]*list.Element
@@ -24,11 +27,12 @@ type entry struct {
 }
 
 // New creates an LRU of the given size
-func New(size int) (*Cache, error) {
+func New(size int, fillFunc FillFunc) (*Cache, error) {
 	if size <= 0 {
 		return nil, errors.New("Must provide a positive size")
 	}
 	c := &Cache{
+		fillFunc:  fillFunc,
 		size:      size,
 		evictList: list.New(),
 		items:     make(map[interface{}]*list.Element, size),
@@ -72,10 +76,26 @@ func (c *Cache) Get(key interface{}) (value interface{}, ok bool) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	// Check for existing item
 	if ent, ok := c.items[key]; ok {
 		c.evictList.MoveToFront(ent)
 		return ent.Value.(*entry).value, true
 	}
+
+	if c.fillFunc != nil {
+		// Create new item
+		ent := &entry{key, c.fillFunc(key)}
+		entry := c.evictList.PushFront(ent)
+		c.items[key] = entry
+
+		// Verify size not exceeded
+		if c.evictList.Len() > c.size {
+			c.removeOldest()
+		}
+
+		return ent.value, true
+	}
+
 	return
 }
 
