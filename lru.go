@@ -109,6 +109,16 @@ func (c *Cache) Remove(key interface{}) {
 	}
 }
 
+// RemoveIfMatch removes the provided key from the cache if the values match.
+func (c *Cache) RemoveIfMatch(key interface{}, value interface{}) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	if ent, ok := c.items[key]; ok && ent.Value == value {
+		c.removeElement(ent)
+	}
+}
+
 // RemoveOldest removes the oldest item from the cache.
 func (c *Cache) RemoveOldest() {
 	c.lock.Lock()
